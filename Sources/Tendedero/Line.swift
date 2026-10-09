@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import os
+import SwiftUI
 
 let log = Logger(subsystem: "app.tendedero.Tendedero", category: "line")
 
@@ -30,7 +31,9 @@ final class Line: ObservableObject {
     @Published var draggingID: UUID?
     @Published var pressedID: UUID?
     /// Whether the line has slid down into view.
-    @Published var revealed = false
+    @Published var revealed = false {
+        didSet { if oldValue && !revealed { closeGapsWhenTucked() } }
+    }
     /// An image is being dragged somewhere on screen: the line makes room for it.
     @Published var incoming = false
     /// The dragged image is over the line, ready to be let go.
@@ -63,6 +66,8 @@ final class Line: ObservableObject {
     func hang(_ url: URL, quietly: Bool = false, flying: Bool = false) -> UUID? {
         guard !items.contains(where: { $0.url == url && !$0.falling }),
               let thumb = makeThumbnail(url) else { return nil }
+        // The line moves over for a new photo anyway, so the gaps close with it.
+        items.removeAll { $0.falling }
         var item = Pegged(url: url, thumb: thumb)
         item.flying = flying
         items.append(item)
@@ -92,8 +97,23 @@ final class Line: ObservableObject {
         hitRects[id] = nil
         save()
         if !quietly { play("Pop", volume: 0.25) }
+        // While the line is down, the others keep their places, so taking
+        // several down in a row never chases a moving target. The gap closes
+        // once the line has tucked away.
+        guard !revealed else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
             self?.items.removeAll { $0.id == id }
+        }
+    }
+
+    /// Waits for the line to finish sliding up, then closes the gaps out of
+    /// sight, without animating, so it comes back down already in place.
+    private func closeGapsWhenTucked() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self, !self.revealed, self.items.contains(where: \.falling) else { return }
+            var still = Transaction()
+            still.disablesAnimations = true
+            withTransaction(still) { self.items.removeAll { $0.falling } }
         }
     }
 

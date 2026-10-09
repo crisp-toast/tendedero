@@ -33,7 +33,7 @@ struct LineView: View {
             ZStack(alignment: .topLeading) {
                 Rope(width: width)
 
-                if line.items.isEmpty && !line.incoming {
+                if line.liveCount == 0 && !line.incoming {
                     Hint()
                         .position(x: width / 2, y: Layout.ropeY(x: width / 2, width: width) + 34)
                         .transition(.opacity)
@@ -58,7 +58,7 @@ struct LineView: View {
             }
             .animation(.spring(response: 0.55, dampingFraction: 0.78), value: line.items.map(\.id))
             .animation(.spring(response: 0.45, dampingFraction: 0.8), value: line.incoming)
-            .animation(.easeInOut(duration: 0.3), value: line.items.isEmpty)
+            .animation(.easeInOut(duration: 0.3), value: line.liveCount == 0)
             // Tucked away, the whole line waits above the top edge and slides
             // out from under the menu bar, the way an auto-hiding Dock does.
             .offset(y: line.revealed ? 0 : -(Layout.panelHeight + 12))
