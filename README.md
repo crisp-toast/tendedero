@@ -47,6 +47,7 @@ Rest the pointer in the menu bar and it glides down. Move away and it's gone.
 | Drag into a folder | Keep it there. It leaves the line. |
 | Drag to the Trash, or click the cross | Let it go. |
 | Rest the pointer in the menu bar | Bring the line down on that screen. |
+| Drag an image up to the menu bar | Bring the line down for it. Let go on the line to hang a copy. |
 | Click anything in the menu bar | Put it away. |
 | <kbd>⌃</kbd>&thinsp;<kbd>⌥</kbd>&thinsp;<kbd>T</kbd> | Show or hide the line. |
 

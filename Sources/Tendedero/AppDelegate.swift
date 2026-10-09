@@ -43,13 +43,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var lastLiveCount = 0
     /// The screen a new capture was taken on: the line goes there.
     private var pendingScreen: NSScreen?
+    private var dragWatcher: DragWatcher!
+    /// An image is being dragged somewhere, out of any app. While it lasts the
+    /// line listens at the top edge even when empty, and can be dropped on.
+    private var imageDrag = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let host = NSHostingView(rootView: LineView(line: line))
         host.sizingOptions = []
-        panel = LinePanel(content: host)
+        let content = LineDropView(content: host)
+        content.onTarget = { [weak self] over in
+            guard let self, self.line.dropTargeted != over else { return }
+            self.line.dropTargeted = over
+        }
+        content.onDrop = { [weak self] pasteboard, frame in
+            self?.receiveDrop(pasteboard, from: frame) ?? false
+        }
+        panel = LinePanel(content: content)
         panel.placeOnScreen()
         updateCapacity()
+
+        dragWatcher = DragWatcher(
+            onStart: { [weak self] in self?.imageDragChanged(true) },
+            onEnd: { [weak self] in self?.imageDragChanged(false) })
 
         if Inbox.isEnabled { Inbox.apply() }
         restoreSettingsOnTermination()
@@ -198,7 +214,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// A new screenshot lifts off from where it was taken and flies to its
     /// place on the line. Without a known capture area it simply drops in.
     private func hangCapture(_ url: URL) {
-        let from = captureRect(of: url)
+        hang(url, from: captureRect(of: url))
+    }
+
+    /// Hangs a file, flying it in from a place on screen when there is one.
+    private func hang(_ url: URL, from: CGRect?) {
         if let from {
             let center = CGPoint(x: from.midX, y: from.midY)
             pendingScreen = NSScreen.screens.first { NSMouseInRect(center, $0.frame, false) }
@@ -228,6 +248,52 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    // MARK: Images dragged in from other apps
+
+    /// An image started or stopped being dragged somewhere on screen.
+    private func imageDragChanged(_ dragging: Bool) {
+        if dragging {
+            imageDrag = true
+            line.incoming = true
+            refresh()
+            return
+        }
+        // A drop on the line is handled first, so the line does not tuck
+        // away under an image that is about to hang.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard let self, !self.dragWatcher.isActive else { return }
+            self.imageDrag = false
+            self.line.incoming = false
+            self.line.dropTargeted = false
+            self.refresh()
+        }
+    }
+
+    /// Images dropped on the line hang like new screenshots, flying in from
+    /// where they were let go.
+    private func receiveDrop(_ pasteboard: NSPasteboard, from frame: CGRect?) -> Bool {
+        let droppedAt = Date()
+        let screen = panel.screen
+        let accepted = DropIn.receive(pasteboard) { [weak self] url in
+            guard let self else { return }
+            // The first one takes the place that was waiting for it.
+            self.line.incoming = false
+            self.pendingScreen = screen
+            // Promised files can take a while. Late ones simply drop in.
+            let fresh = Date().timeIntervalSince(droppedAt) < 0.6
+            self.hang(url, from: fresh ? frame : nil)
+        }
+        guard accepted else { return false }
+        // Stay down while the files arrive, even on an empty line.
+        wanted = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self, self.line.liveCount == 0, !self.keepOpen else { return }
+            self.wanted = false
+            self.refresh()
+        }
+        return true
+    }
+
     /// A discarded card falls over the whole screen, from where it hangs.
     private func fall(_ item: Pegged) {
         guard isPresent, isRevealed, !item.flying, let screen = panel.screen,
@@ -241,7 +307,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func cardFrame(for id: UUID) -> CGRect? {
         guard let index = line.items.firstIndex(where: { $0.id == id }) else { return nil }
         let width = panel.frame.width
-        let x = Layout.x(index: index, count: line.items.count, width: width)
+        let slots = line.items.count + (line.incoming ? 1 : 0)
+        let x = Layout.x(index: index, count: slots, width: width)
         let viewTop = Layout.ropeY(x: x, width: width) - Layout.pinAbove
         let cardTop = viewTop + PeggedView.cardOffsetBelowTop
         let size = PeggedView.cardSize(for: line.items[index].thumb.size)
@@ -255,14 +322,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func refresh() {
         let blocked = panel.screen.map(FullScreen.isActive(on:))
             ?? LinePanel.screenUnderPointer().map(FullScreen.isActive(on:)) ?? false
-        if wanted && !blocked {
+        // An image being dragged can always be brought up to the line.
+        let want = wanted || imageDrag
+        if want && !blocked {
             present()
         } else {
             dismiss()
         }
         // The cursor is watched while there is a line, even tucked away,
         // to notice it pushing against the top edge.
-        if wanted { startMouseTracking() } else { stopMouseTracking() }
+        if want { startMouseTracking() } else { stopMouseTracking() }
     }
 
     private func present() {
@@ -376,6 +445,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let mouse = NSEvent.mouseLocation
         let now = Date()
 
+        // A drag that ended without the release being heard.
+        if dragWatcher.isActive && NSEvent.pressedMouseButtons & 1 == 0 { dragWatcher.end() }
+
         let screenUnderPointer = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }
         let inMenuBar = screenUnderPointer.map { NSMouseInRect(mouse, Self.menuBarBand(of: $0), false) } ?? false
         if !inMenuBar { menuBarSuppressed = false }
@@ -427,14 +499,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// The panel spans the whole width of the screen, so it only accepts the
     /// mouse while the cursor is over a photo. Everywhere else, clicks go to
-    /// whatever is underneath.
+    /// whatever is underneath. While an image is being dragged, the whole
+    /// line is there to drop it on.
     private func updateMousePassThrough(_ mouse: NSPoint) {
         guard !GrabView.isDragging else { return }
         let local = panel.convertPoint(fromScreen: mouse)
         let flipped = CGPoint(x: local.x, y: panel.frame.height - local.y)
         let overPhoto = line.hitRects.values.contains { $0.insetBy(dx: -4, dy: -4).contains(flipped) }
-        if panel.ignoresMouseEvents == overPhoto {
-            panel.ignoresMouseEvents = !overPhoto
+        let accepts = overPhoto || imageDrag
+        if panel.ignoresMouseEvents == accepts {
+            panel.ignoresMouseEvents = !accepts
         }
     }
 

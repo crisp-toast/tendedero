@@ -28,24 +28,36 @@ struct LineView: View {
     var body: some View {
         GeometryReader { geo in
             let width = geo.size.width
+            // An image being dragged gets a place of its own at the end.
+            let slots = line.items.count + (line.incoming ? 1 : 0)
             ZStack(alignment: .topLeading) {
                 Rope(width: width)
 
-                if line.items.isEmpty {
+                if line.items.isEmpty && !line.incoming {
                     Hint()
                         .position(x: width / 2, y: Layout.ropeY(x: width / 2, width: width) + 34)
                         .transition(.opacity)
                 }
 
                 ForEach(Array(line.items.enumerated()), id: \.element.id) { index, item in
-                    let x = Layout.x(index: index, count: line.items.count, width: width)
+                    let x = Layout.x(index: index, count: slots, width: width)
                     let ropeY = Layout.ropeY(x: x, width: width)
                     PeggedView(item: item, line: line)
                         .frame(width: Layout.cardWidth, height: Layout.panelHeight - ropeY, alignment: .top)
                         .position(x: x, y: ropeY - Layout.pinAbove + (Layout.panelHeight - ropeY) / 2)
                 }
+
+                if line.incoming {
+                    let x = Layout.x(index: line.items.count, count: slots, width: width)
+                    let ropeY = Layout.ropeY(x: x, width: width)
+                    DropSlot(targeted: line.dropTargeted)
+                        .frame(width: Layout.cardWidth, height: Layout.panelHeight - ropeY, alignment: .top)
+                        .position(x: x, y: ropeY - Layout.pinAbove + (Layout.panelHeight - ropeY) / 2)
+                        .transition(.opacity)
+                }
             }
             .animation(.spring(response: 0.55, dampingFraction: 0.78), value: line.items.map(\.id))
+            .animation(.spring(response: 0.45, dampingFraction: 0.8), value: line.incoming)
             .animation(.easeInOut(duration: 0.3), value: line.items.isEmpty)
             // Tucked away, the whole line waits above the top edge and slides
             // out from under the menu bar, the way an auto-hiding Dock does.
@@ -67,6 +79,45 @@ private struct Hint: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
             .background(.regularMaterial, in: Capsule())
+    }
+}
+
+/// The place a dragged image will hang: an empty frame on its clip. It lights
+/// up and leans in when the image is over the line, ready to be let go.
+private struct DropSlot: View {
+    let targeted: Bool
+
+    /// The size of a typical screenshot's card.
+    private static let size = PeggedView.cardSize(for: CGSize(width: 16, height: 10))
+
+    var body: some View {
+        VStack(spacing: -12) {
+            Clothespin()
+                .zIndex(1)
+            VStack(spacing: 5) {
+                Image(systemName: "plus")
+                    .font(.system(size: 15, weight: .semibold))
+                if targeted {
+                    Text(L("Let go to hang it"))
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .transition(.opacity)
+                }
+            }
+            .foregroundStyle(targeted ? .primary : .secondary)
+            .frame(width: Self.size.width, height: Self.size.height)
+            .glassFrame(cornerRadius: Frame.radius)
+            .overlay(
+                RoundedRectangle(cornerRadius: Frame.radius - Frame.inset, style: .continuous)
+                    .strokeBorder(style: StrokeStyle(lineWidth: 1.2, dash: [5, 4]))
+                    .foregroundStyle(.secondary)
+                    .padding(Frame.inset)
+            )
+            .shadow(color: .black.opacity(targeted ? 0.22 : 0.12), radius: targeted ? 12 : 8, y: targeted ? 6 : 4)
+            .opacity(targeted ? 1 : 0.8)
+            .scaleEffect(targeted ? 1.05 : 1, anchor: .top)
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: targeted)
+        .allowsHitTesting(false)
     }
 }
 

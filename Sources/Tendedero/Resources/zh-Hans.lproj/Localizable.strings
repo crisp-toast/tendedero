@@ -29,6 +29,7 @@
 
 /* LineView */
 "Take a screenshot and it will hang here" = "截个图，它就会挂在这里";
+"Let go to hang it" = "松手即可挂上";
 
 /* PeggedView */
 "Copied" = "已复制";

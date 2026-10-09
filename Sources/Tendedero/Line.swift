@@ -31,6 +31,10 @@ final class Line: ObservableObject {
     @Published var pressedID: UUID?
     /// Whether the line has slid down into view.
     @Published var revealed = false
+    /// An image is being dragged somewhere on screen: the line makes room for it.
+    @Published var incoming = false
+    /// The dragged image is over the line, ready to be let go.
+    @Published var dropTargeted = false
 
     /// Card frames in window coordinates, reported by the views. The panel
     /// uses them to only catch clicks over photos and let the rest through.
@@ -151,12 +155,13 @@ final class Line: ObservableObject {
         contentsOfFile: "/System/Library/Components/CoreAudio.component/Contents/SharedSupport/SystemSounds/dock/drag to trash.aif",
         byReference: true)
 
-    /// Whether the file lives in Tendedero's own folder. Those are discarded
-    /// to the Trash, or the folder would fill up with forgotten screenshots.
-    /// Files anywhere else, like the Desktop, stay where they are.
+    /// Whether the file lives in one of Tendedero's own folders: the
+    /// screenshot inbox, or the copies of images dragged onto the line. Those
+    /// are discarded to the Trash, or the folders would fill up with forgotten
+    /// images. Files anywhere else, like the Desktop, stay where they are.
     func isInInbox(_ id: UUID) -> Bool {
         guard let item = items.first(where: { $0.id == id }) else { return false }
-        return item.url.standardizedFileURL.path.hasPrefix(Inbox.folder.standardizedFileURL.path + "/")
+        return DropIn.isOurs(item.url)
     }
 
     /// The corner cross and "Take down" both end up here.
@@ -176,18 +181,6 @@ final class Line: ObservableObject {
             log.error("Could not save to Desktop: \(error.localizedDescription, privacy: .public)")
             NSSound.beep()
         }
-    }
-
-    private func uniqueURL(in folder: URL, for name: String) -> URL {
-        let base = (name as NSString).deletingPathExtension
-        let ext = (name as NSString).pathExtension
-        var candidate = folder.appendingPathComponent(name)
-        var n = 2
-        while FileManager.default.fileExists(atPath: candidate.path) {
-            candidate = folder.appendingPathComponent("\(base) \(n)").appendingPathExtension(ext)
-            n += 1
-        }
-        return candidate
     }
 
     /// Long press: open the photo in the system Markup editor.
@@ -248,6 +241,19 @@ final class Line: ObservableObject {
               let rep = NSBitmapImageRep(data: tiff) else { return nil }
         return rep.representation(using: .png, properties: [:])
     }
+}
+
+/// A name in the folder that nothing uses yet: "name.png", then "name 2.png".
+func uniqueURL(in folder: URL, for name: String) -> URL {
+    let base = (name as NSString).deletingPathExtension
+    let ext = (name as NSString).pathExtension
+    var candidate = folder.appendingPathComponent(name)
+    var n = 2
+    while FileManager.default.fileExists(atPath: candidate.path) {
+        candidate = folder.appendingPathComponent("\(base) \(n)").appendingPathExtension(ext)
+        n += 1
+    }
+    return candidate
 }
 
 func makeThumbnail(_ url: URL, maxPixels: Int = 480) -> NSImage? {
