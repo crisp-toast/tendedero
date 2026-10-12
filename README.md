@@ -13,6 +13,12 @@
   English&nbsp;·&nbsp;<a href="docs/i18n/README.es.md">Español</a>&nbsp;·&nbsp;<a href="docs/i18n/README.zh-Hans.md">简体中文</a>
 </p>
 
+> [!NOTE]
+> This is a fork of [Tendedero](https://github.com/alejandrobujan/tendedero),
+> designed and built by [Alejandro Buján](https://alejandrobujan.com). It
+> adds a few changes, listed under [Changes in this fork](#changes-in-this-fork).
+> The download and Homebrew install below get his original app.
+
 <br>
 
 ## Out of sight. Within reach.
@@ -43,7 +49,7 @@ Rest the pointer in the menu bar and it glides down. Move away and it's gone.
 | Click | Copy the image. |
 | Press and hold | Open it in Markup. |
 | Double click | Open it in Preview. |
-| Drag into an app | Send a copy. It stays on the line. |
+| Drag into an app | Send a copy. It leaves the line. |
 | Drag into a folder | Keep it there. It leaves the line. |
 | Drag to the Trash, or click the cross | Let it go. |
 | Rest the pointer in the menu bar | Bring the line down on that screen. |
@@ -135,6 +141,34 @@ Translations live in `Sources/Tendedero/Resources`, one `.lproj` folder per
 language. `swift scripts/check-strings.swift` checks that none is missing.
 
 </details>
+
+<br>
+
+## Changes in this fork
+
+Everything else is Tendedero as Alejandro Buján made it.
+
+- **Drag images onto the line from any app.** Hold an image from Finder,
+  Photos, a browser or anywhere else in the menu bar, and the line comes
+  down with an empty frame. Let go on the line to hang a copy. The original
+  never moves.
+- **Photos keep their places while you take some down.** The cross leaves a
+  gap instead of sliding the rest to the middle, so taking down several in
+  a row never chases a moving target. The gaps close once the line tucks
+  away.
+- **A photo dragged off the line leaves it.** Drag one into an app or a
+  folder and it comes off the line. A drag that lands nowhere flies back.
+  When Tendedero handles your screenshots, the file it kept goes to the
+  Trash a minute later, as it would with the cross.
+
+To get these changes, build this fork from source:
+
+```sh
+git clone https://github.com/crisp-toast/tendedero.git
+cd tendedero
+scripts/build-app.sh
+open build/Tendedero.app
+```
 
 <br>
 

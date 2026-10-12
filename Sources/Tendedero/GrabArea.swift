@@ -4,7 +4,7 @@ import SwiftUI
 /// Bridges each photo to AppKit's drag and drop, so it can be dragged into
 /// any app as a real file. Each destination means one thing:
 ///
-/// - An app gets a copy, and the photo stays on the line.
+/// - An app gets a copy, and the photo leaves the line.
 /// - A folder or the Desktop keeps the file, and the photo leaves the line.
 /// - The Trash discards it.
 /// - Nowhere that accepts it: the photo flies back to the line.
@@ -34,9 +34,9 @@ struct GrabArea: NSViewRepresentable {
         view.onDragStart = { line.draggingID = id }
         view.onDragEnd = {
             line.draggingID = nil
-            // Moved into a folder: it is saved where you wanted it.
             line.prune()
         }
+        view.onHandOff = { line.handOff(id) }
         view.onTrash = { line.trash(id) }
         view.onDiscard = { line.discard(id) }
         view.onLongPress = { line.markup(id) }
@@ -72,6 +72,7 @@ final class GrabView: NSView, NSDraggingSource {
     var onDoubleClick: () -> Void = {}
     var onDragStart: () -> Void = {}
     var onDragEnd: () -> Void = {}
+    var onHandOff: () -> Void = {}
     var onTrash: () -> Void = {}
     var onDiscard: () -> Void = {}
     var onLongPress: () -> Void = {}
@@ -179,13 +180,10 @@ final class GrabView: NSView, NSDraggingSource {
             onTrash()
             return
         }
+        // Taken into an app or a folder: it leaves the line. Released where
+        // nothing accepts it, it flies back and stays.
+        if !operation.isEmpty { onHandOff() }
         onDragEnd()
-        // Finder finishes a move a moment later. Check again then, so a photo
-        // saved into a folder leaves the line.
-        if operation.contains(.move) {
-            let done = onDragEnd
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { done() }
-        }
     }
 
     /// The drag preview keeps the photo's aspect ratio inside the card.

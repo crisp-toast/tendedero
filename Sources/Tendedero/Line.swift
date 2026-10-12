@@ -90,9 +90,9 @@ final class Line: ObservableObject {
     /// over the whole screen.
     var onFall: ((Pegged) -> Void)?
 
-    func drop(_ id: UUID, quietly: Bool = false) {
+    func drop(_ id: UUID, quietly: Bool = false, falls: Bool = true) {
         guard let i = items.firstIndex(where: { $0.id == id }), !items[i].falling else { return }
-        onFall?(items[i])
+        if falls { onFall?(items[i]) }
         items[i].falling = true
         hitRects[id] = nil
         save()
@@ -188,6 +188,29 @@ final class Line: ObservableObject {
     func discard(_ id: UUID) {
         if isInInbox(id) { trash(id) } else { drop(id) }
     }
+
+    /// Dragged into an app or a folder: the photo went where you took it, so
+    /// it leaves the line, without falling. A file in one of Tendedero's own
+    /// folders goes to the Trash a minute later, once the app has had time to
+    /// read it, as the cross would. Anywhere else, the file stays put.
+    func handOff(_ id: UUID) {
+        guard let item = items.first(where: { $0.id == id && !$0.falling }) else { return }
+        drop(id, quietly: true, falls: false)
+        guard DropIn.isOurs(item.url) else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.handOffGrace) { [weak self] in
+            guard let self, !self.items.contains(where: { $0.url == item.url && !$0.falling }),
+                  FileManager.default.fileExists(atPath: item.url.path) else { return }
+            do {
+                try FileManager.default.trashItem(at: item.url, resultingItemURL: nil)
+            } catch {
+                log.error("Could not trash \(item.url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            }
+        }
+    }
+
+    /// How long a file dragged into an app is left in place before it goes
+    /// to the Trash. Some apps only read it once the upload starts.
+    private static let handOffGrace: TimeInterval = 60
 
     /// Inbox mode: keep a screenshot by moving it to the Desktop.
     func saveToDesktop(_ id: UUID) {
