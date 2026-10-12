@@ -185,6 +185,9 @@ final class LineDropView: NSView {
     /// The drop, with the frame of the dragged picture where it was let go,
     /// in screen coordinates, when the drag reports it.
     var onDrop: (NSPasteboard, CGRect?) -> Bool = { _, _ in false }
+    /// A screenshot from the middle of the screen let go on the line: the
+    /// file itself hangs, no copy.
+    var onHang: (URL, CGRect?) -> Bool = { _, _ in false }
 
     private var verdict: (sequence: Int, accepts: Bool)?
 
@@ -202,7 +205,8 @@ final class LineDropView: NSView {
     /// away, so letting it go over the line still sends it back to its place.
     private func accepts(_ info: NSDraggingInfo) -> Bool {
         if let verdict, verdict.sequence == info.draggingSequenceNumber { return verdict.accepts }
-        let accepts = info.draggingSource == nil && DropIn.canAccept(info.draggingPasteboard)
+        let fromHere = info.draggingSource != nil && Self.waitingShot(info) == nil
+        let accepts = !fromHere && DropIn.canAccept(info.draggingPasteboard)
         verdict = (info.draggingSequenceNumber, accepts)
         return accepts
     }
@@ -230,6 +234,13 @@ final class LineDropView: NSView {
             guard f.width > 2, f.height > 2, let window else { return nil }
             return window.convertToScreen(convert(f, to: nil))
         }
+        if let url = Self.waitingShot(sender) { return onHang(url, onScreen) }
         return onDrop(sender.draggingPasteboard, onScreen)
+    }
+
+    /// The file of a screenshot dragged from the middle of the screen.
+    private static func waitingShot(_ info: NSDraggingInfo) -> URL? {
+        guard let grab = info.draggingSource as? GrabView, grab.hangsOnLine else { return nil }
+        return grab.url
     }
 }

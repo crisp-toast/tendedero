@@ -137,17 +137,21 @@ final class Line: ObservableObject {
 
     func copy(_ id: UUID) {
         guard let item = items.first(where: { $0.id == id }) else { return }
-        let entry = NSPasteboardItem()
-        if let png = pngData(item.url) { entry.setData(png, forType: .png) }
-        entry.setString(item.url.absoluteString, forType: .fileURL)
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.writeObjects([entry])
-
+        copyImage(item.url)
         copiedID = id
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
             if self?.copiedID == id { self?.copiedID = nil }
         }
+    }
+
+    /// Puts an image on the clipboard, as picture and as file.
+    func copyImage(_ url: URL) {
+        let entry = NSPasteboardItem()
+        if let png = pngData(url) { entry.setData(png, forType: .png) }
+        entry.setString(url.absoluteString, forType: .fileURL)
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.writeObjects([entry])
     }
 
     func open(_ id: UUID) {
@@ -171,7 +175,7 @@ final class Line: ObservableObject {
         }
     }
 
-    private static let trashSound = NSSound(
+    static let trashSound = NSSound(
         contentsOfFile: "/System/Library/Components/CoreAudio.component/Contents/SharedSupport/SystemSounds/dock/drag to trash.aif",
         byReference: true)
 
@@ -190,21 +194,27 @@ final class Line: ObservableObject {
     }
 
     /// Dragged into an app or a folder: the photo went where you took it, so
-    /// it leaves the line, without falling. A file in one of Tendedero's own
-    /// folders goes to the Trash a minute later, once the app has had time to
-    /// read it, as the cross would. Anywhere else, the file stays put.
+    /// it leaves the line, without falling.
     func handOff(_ id: UUID) {
         guard let item = items.first(where: { $0.id == id && !$0.falling }) else { return }
-        handedOff.append((item.url.lastPathComponent, creationDate(item.url), Date()))
         drop(id, quietly: true, falls: false)
-        guard DropIn.isOurs(item.url) else { return }
+        release(item.url)
+    }
+
+    /// A file dragged into an app or a folder, off the line or from the middle
+    /// of the screen. A file in one of Tendedero's own folders goes to the
+    /// Trash a minute later, once the app has had time to read it, as the
+    /// cross would. Anywhere else, the file stays put.
+    func release(_ url: URL) {
+        handedOff.append((url.lastPathComponent, creationDate(url), Date()))
+        guard DropIn.isOurs(url) else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.handOffGrace) { [weak self] in
-            guard let self, !self.items.contains(where: { $0.url == item.url && !$0.falling }),
-                  FileManager.default.fileExists(atPath: item.url.path) else { return }
+            guard let self, !self.items.contains(where: { $0.url == url && !$0.falling }),
+                  FileManager.default.fileExists(atPath: url.path) else { return }
             do {
-                try FileManager.default.trashItem(at: item.url, resultingItemURL: nil)
+                try FileManager.default.trashItem(at: url, resultingItemURL: nil)
             } catch {
-                log.error("Could not trash \(item.url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+                log.error("Could not trash \(url.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
             }
         }
     }
@@ -213,13 +223,13 @@ final class Line: ObservableObject {
     /// to the Trash. Some apps only read it once the upload starts.
     private static let handOffGrace: TimeInterval = 60
 
-    /// Photos dragged off the line in the last two minutes. A screenshot
+    /// Files dragged somewhere else in the last two minutes. A screenshot
     /// dragged onto the Desktop keeps its screenshot tag, so the watcher would
-    /// take it for a new capture and hang it again.
+    /// take it for a new capture.
     private var handedOff: [(name: String, created: Date?, at: Date)] = []
 
-    /// Whether a file that just turned up is a photo dragged off the line
-    /// moments ago: moved there, or copied with the same name or creation date.
+    /// Whether a file that just turned up is one dragged somewhere moments
+    /// ago: moved there, or copied with the same name or creation date.
     func wasHandedOff(_ url: URL) -> Bool {
         handedOff.removeAll { Date().timeIntervalSince($0.at) > 120 }
         let created = creationDate(url)

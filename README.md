@@ -148,6 +148,13 @@ language. `swift scripts/check-strings.swift` checks that none is missing.
 
 Everything else is Tendedero as Alejandro Buján made it.
 
+- **Screenshots wait in the middle of the screen.** A new screenshot no
+  longer hangs on the line by itself. It lifts off from where you took it
+  and waits in the middle of the screen until you decide. Drag it to the
+  menu bar and let go on the line to hang it, or drag it into an app, a
+  folder or the Desktop to send it there. Click it to open it, or click its
+  cross to move it to the Trash. Screenshots taken in a row pile up until
+  you get to them.
 - **Drag images onto the line from any app.** Hold an image from Finder,
   Photos, a browser or anywhere else in the menu bar, and the line comes
   down with an empty frame. Let go on the line to hang a copy. The original
@@ -157,8 +164,8 @@ Everything else is Tendedero as Alejandro Buján made it.
   a row never chases a moving target. The gaps close once the line tucks
   away.
 - **A photo dragged off the line leaves it.** Drag one into an app, a
-  folder or the Desktop and it comes off the line, without hanging again
-  as a new screenshot. A drag that lands nowhere flies back.
+  folder or the Desktop and it comes off the line, without coming back as
+  a new screenshot. A drag that lands nowhere flies back.
   When Tendedero handles your screenshots, the file it kept goes to the
   Trash a minute later, as it would with the cross.
 

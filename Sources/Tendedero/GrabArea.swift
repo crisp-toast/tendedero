@@ -78,6 +78,12 @@ final class GrabView: NSView, NSDraggingSource {
     var onLongPress: () -> Void = {}
     var onPressChange: (Bool) -> Void = { _ in }
     var menuProvider: () -> NSMenu = { NSMenu() }
+    /// A screenshot waiting in the middle of the screen can be let go on the
+    /// line. A photo already hanging on it cannot.
+    var hangsOnLine = false
+    /// When set, the drag image is no bigger than this and sits under the
+    /// pointer, so a large preview does not hide where it is going.
+    var dragImageMaxSide: CGFloat?
 
     private var downPoint: NSPoint?
     private var startedDrag = false
@@ -141,7 +147,7 @@ final class GrabView: NSView, NSDraggingSource {
         endPress()
 
         let item = NSDraggingItem(pasteboardWriter: url as NSURL)
-        item.setDraggingFrame(imageFrame(), contents: dragImage)
+        item.setDraggingFrame(imageFrame(around: convert(start, from: nil)), contents: dragImage)
         let session = beginDraggingSession(with: [item], event: event, source: self)
         // Released where nothing accepts it: it flies back to the line.
         session.animatesToStartingPositionsOnCancelOrFail = true
@@ -166,7 +172,7 @@ final class GrabView: NSView, NSDraggingSource {
                          sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
         // Apps pick copy. Finder picks move, so a folder or the Desktop keeps
         // the file. Delete is what lets the Dock's Trash accept it.
-        context == .outsideApplication ? [.copy, .move, .delete] : []
+        context == .outsideApplication ? [.copy, .move, .delete] : (hangsOnLine ? .copy : [])
     }
 
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
@@ -187,10 +193,12 @@ final class GrabView: NSView, NSDraggingSource {
     }
 
     /// The drag preview keeps the photo's aspect ratio inside the card.
-    private func imageFrame() -> NSRect {
+    private func imageFrame(around point: NSPoint) -> NSRect {
         guard let size = dragImage?.size, size.width > 0, size.height > 0 else { return bounds }
-        let scale = min(bounds.width / size.width, bounds.height / size.height)
+        var scale = min(bounds.width / size.width, bounds.height / size.height)
+        if let side = dragImageMaxSide { scale = min(scale, side / max(size.width, size.height)) }
         let w = size.width * scale, h = size.height * scale
+        if dragImageMaxSide != nil { return NSRect(x: point.x - w / 2, y: point.y - h / 2, width: w, height: h) }
         return NSRect(x: (bounds.width - w) / 2, y: (bounds.height - h) / 2, width: w, height: h)
     }
 }

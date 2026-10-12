@@ -7,6 +7,7 @@ import SwiftUI
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let line = Line()
+    private lazy var shots = Shots(line: line)
     private var panel: LinePanel!
     private var statusItem: NSStatusItem!
     private var watcher: ScreenshotWatcher!
@@ -59,6 +60,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         content.onDrop = { [weak self] pasteboard, frame in
             self?.receiveDrop(pasteboard, from: frame) ?? false
         }
+        content.onHang = { [weak self] url, frame in
+            self?.hangShot(url, from: frame) ?? false
+        }
         panel = LinePanel(content: content)
         panel.placeOnScreen()
         updateCapacity()
@@ -78,7 +82,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setUpStatusItem()
         watchMenuBarClicks()
 
-        Markup.shared.onSaved = { [weak self] url in self?.line.reloadThumbnail(for: url) }
+        Markup.shared.onSaved = { [weak self] url in
+            self?.line.reloadThumbnail(for: url)
+            self?.shots.reloadThumbnail(for: url)
+        }
+        shots.onDragChanged = { [weak self] dragging in self?.imageDragChanged(dragging) }
         line.onFall = { [weak self] item in self?.fall(item) }
 
         line.$items
@@ -137,17 +145,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         safetyWatcher?.stop()
         safetyWatcher = nil
         watcher = ScreenshotWatcher(
-            onNew: { [weak self] url in self?.hangCapture(url) },
-            onChange: { [weak self] in self?.line.prune() })
+            onNew: { [weak self] url in self?.showCapture(url) },
+            onChange: { [weak self] in self?.prune() })
         watcher.start()
         if Inbox.isEnabled, watcher.folder.standardizedFileURL != ScreenshotWatcher.desktop.standardizedFileURL {
             let safety = ScreenshotWatcher(
                 folder: ScreenshotWatcher.desktop,
                 onNew: { [weak self] url in
                     log.notice("Screenshot landed on the Desktop despite inbox mode: \(url.lastPathComponent, privacy: .public)")
-                    self?.hangCapture(url)
+                    self?.showCapture(url)
                 },
-                onChange: { [weak self] in self?.line.prune() })
+                onChange: { [weak self] in self?.prune() })
             safety.start()
             safetyWatcher = safety
         }
@@ -209,15 +217,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         lastLiveCount = live
     }
 
-    // MARK: The capture flying to the line
+    /// Files that went away fall off the line, and stop waiting in the middle.
+    private func prune() {
+        line.prune()
+        shots.prune()
+    }
 
-    /// A new screenshot lifts off from where it was taken and flies to its
-    /// place on the line. Without a known capture area it simply drops in.
-    private func hangCapture(_ url: URL) {
+    // MARK: New screenshots
+
+    /// A new screenshot lifts off from where it was taken and waits in the
+    /// middle of the screen. It only hangs on the line if you drag it there.
+    private func showCapture(_ url: URL) {
         // A photo just dragged off the line onto the Desktop is not a new capture.
         guard !line.wasHandedOff(url) else { return }
-        hang(url, from: captureRect(of: url))
+        shots.show(url, from: captureRect(of: url))
     }
+
+    /// A screenshot from the middle of the screen let go on the line hangs
+    /// there, flying in from where it was let go.
+    private func hangShot(_ url: URL, from frame: CGRect?) -> Bool {
+        line.incoming = false
+        pendingScreen = panel.screen
+        shots.hung(url)
+        hang(url, from: frame)
+        return true
+    }
+
+    // MARK: Flying to the line
 
     /// Hangs a file, flying it in from a place on screen when there is one.
     private func hang(_ url: URL, from: CGRect?) {
@@ -504,7 +530,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// whatever is underneath. While an image is being dragged, the whole
     /// line is there to drop it on.
     private func updateMousePassThrough(_ mouse: NSPoint) {
-        guard !GrabView.isDragging else { return }
+        // A photo dragged off the line leaves it as it is. A screenshot from
+        // the middle of the screen counts as an image coming in.
+        guard !GrabView.isDragging || imageDrag else { return }
         let local = panel.convertPoint(fromScreen: mouse)
         let flipped = CGPoint(x: local.x, y: panel.frame.height - local.y)
         let overPhoto = line.hitRects.values.contains { $0.insetBy(dx: -4, dy: -4).contains(flipped) }
