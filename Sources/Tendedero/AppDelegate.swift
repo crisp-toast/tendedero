@@ -214,6 +214,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// A new screenshot lifts off from where it was taken and flies to its
     /// place on the line. Without a known capture area it simply drops in.
     private func hangCapture(_ url: URL) {
+        // A photo just dragged off the line onto the Desktop is not a new capture.
+        guard !line.wasHandedOff(url) else { return }
         hang(url, from: captureRect(of: url))
     }
 

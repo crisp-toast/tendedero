@@ -195,6 +195,7 @@ final class Line: ObservableObject {
     /// read it, as the cross would. Anywhere else, the file stays put.
     func handOff(_ id: UUID) {
         guard let item = items.first(where: { $0.id == id && !$0.falling }) else { return }
+        handedOff.append((item.url.lastPathComponent, creationDate(item.url), Date()))
         drop(id, quietly: true, falls: false)
         guard DropIn.isOurs(item.url) else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.handOffGrace) { [weak self] in
@@ -211,6 +212,23 @@ final class Line: ObservableObject {
     /// How long a file dragged into an app is left in place before it goes
     /// to the Trash. Some apps only read it once the upload starts.
     private static let handOffGrace: TimeInterval = 60
+
+    /// Photos dragged off the line in the last two minutes. A screenshot
+    /// dragged onto the Desktop keeps its screenshot tag, so the watcher would
+    /// take it for a new capture and hang it again.
+    private var handedOff: [(name: String, created: Date?, at: Date)] = []
+
+    /// Whether a file that just turned up is a photo dragged off the line
+    /// moments ago: moved there, or copied with the same name or creation date.
+    func wasHandedOff(_ url: URL) -> Bool {
+        handedOff.removeAll { Date().timeIntervalSince($0.at) > 120 }
+        let created = creationDate(url)
+        return handedOff.contains { $0.name == url.lastPathComponent || (created != nil && $0.created == created) }
+    }
+
+    private func creationDate(_ url: URL) -> Date? {
+        try? url.resourceValues(forKeys: [.creationDateKey]).creationDate
+    }
 
     /// Inbox mode: keep a screenshot by moving it to the Desktop.
     func saveToDesktop(_ id: UUID) {

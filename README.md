@@ -156,8 +156,9 @@ Everything else is Tendedero as Alejandro Buján made it.
   gap instead of sliding the rest to the middle, so taking down several in
   a row never chases a moving target. The gaps close once the line tucks
   away.
-- **A photo dragged off the line leaves it.** Drag one into an app or a
-  folder and it comes off the line. A drag that lands nowhere flies back.
+- **A photo dragged off the line leaves it.** Drag one into an app, a
+  folder or the Desktop and it comes off the line, without hanging again
+  as a new screenshot. A drag that lands nowhere flies back.
   When Tendedero handles your screenshots, the file it kept goes to the
   Trash a minute later, as it would with the cross.
 
